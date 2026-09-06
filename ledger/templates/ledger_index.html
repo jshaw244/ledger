@@ -1,0 +1,84 @@
+{% extends "ledger_base.html" %}
+{% from "_macros.html" import freshness %}
+{% block title %}Ledger{% endblock %}
+
+{% block ledger_head %}
+<style>
+  .ledger-cards {
+    display: grid; gap: 1rem;
+    grid-template-columns: repeat(auto-fill, minmax(20rem, 1fr));
+  }
+  .ledger-card {
+    display: block; background: var(--surface-1); border: 1px solid var(--hairline);
+    border-radius: 8px; padding: 1.1rem 1.25rem; color: inherit;
+    transition: border-color .12s, box-shadow .12s;
+  }
+  .ledger-card:hover { text-decoration: none; border-color: var(--accent); box-shadow: 0 2px 8px rgba(0,0,0,.06); }
+  .ledger-card .card-head { display: flex; justify-content: space-between; align-items: baseline; gap: .75rem; }
+  .ledger-card h2 { margin: 0 0 .4rem; font-size: 1rem; }
+  .ledger-card p { margin: 0; font-size: .85rem; color: var(--ink-2); line-height: 1.45; }
+  .ledger-card .stat { margin-top: .6rem; font-size: .8rem; color: var(--ink-muted); }
+</style>
+{% endblock %}
+
+{% block ledger_content %}
+<h1>Ledger</h1>
+<p class="lede">
+  Public-record tracking. Every number here traces to a named public filing or
+  feed — <strong>no inferred scores, no blended indices, no third-party judgments
+  presented as data</strong>. Where a section can't be refreshed, it says so
+  rather than showing stale figures as current.
+</p>
+
+<div style="display:flex;gap:.75rem;align-items:center;margin-bottom:1.5rem;flex-wrap:wrap">
+  <button class="btn" id="fetch-btn">Fetch all sections</button>
+  <span style="font-size:.85rem;color:var(--ink-2)" id="fetch-note"></span>
+</div>
+
+<div class="ledger-cards">
+  {% for p in panels %}
+  <a class="ledger-card" href="{{ url_for('ledger.panel', panel_id=p.id) }}">
+    <div class="card-head">
+      <h2>{{ p.title }}</h2>
+      {{ freshness(p.run) }}
+    </div>
+    <p>{{ p.subtitle }}</p>
+    <div class="stat">
+      {%- if p.load_error %}could not load
+      {%- elif p.empty %}no data yet
+      {%- elif p.kind == 'series' %}{{ p.series|length }} series
+      {%- else %}{{ p.rows|length }} rows
+      {%- endif %} · {{ p.source }}
+    </div>
+  </a>
+  {% endfor %}
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function () {
+  const btn = document.getElementById('fetch-btn');
+  const note = document.getElementById('fetch-note');
+
+  async function poll() {
+    const r = await fetch('api/fetch/status');
+    const s = await r.json();
+    if (s.running) { note.textContent = 'Fetching…'; setTimeout(poll, 2000); return; }
+    btn.disabled = false;
+    if (s.error) { note.textContent = 'Failed: ' + s.error; return; }
+    const bad = (s.results || []).filter(x => x.status !== 'ok').length;
+    note.textContent = bad ? `Done, ${bad} section(s) not refreshed — reloading…` : 'Done — reloading…';
+    setTimeout(() => location.reload(), 1200);
+  }
+
+  btn.addEventListener('click', async () => {
+    btn.disabled = true;
+    note.textContent = 'Starting…';
+    const r = await fetch('api/fetch', { method: 'POST' });
+    if (!r.ok) { note.textContent = 'Already running.'; btn.disabled = false; return; }
+    poll();
+  });
+})();
+</script>
+{% endblock %}

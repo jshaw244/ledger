@@ -1,0 +1,115 @@
+{% extends "base.html" %}
+
+{#
+  Shared chrome for every ledger page: the second-tier nav and the styles both the
+  overview and the panel pages use. The hub bar above switches modules; this one
+  switches panels within Ledger.
+
+  Chart colors are the reference categorical palette in documented slot order,
+  rendered on its validated light surface (#fcfcfb). Slot ORDER is the
+  colorblind-safety mechanism, not decoration — do not reorder or hand-pick.
+  Three light slots sit under 3:1 on that surface, which obliges the relief rule:
+  every chart ships its table alongside it.
+#}
+
+{% block head %}
+<style>
+  .ledger {
+    /* ---- Reference palette, light mode ---- */
+    --surface-1:  #fcfcfb;
+    --plane:      #f9f9f7;
+    --ink-1:      #0b0b0b;
+    --ink-2:      #52514e;
+    --ink-muted:  #898781;
+    --grid:       #e1e0d9;
+    --axis:       #c3c2b7;
+    --hairline:   rgba(11,11,11,0.10);
+    --accent:     #2a78d6;
+    max-width: 78rem;
+  }
+
+  .ledger h1 { margin: 0 0 .25rem; font-size: 1.6rem; }
+  .ledger .lede { margin: 0 0 1.5rem; color: var(--ink-2); max-width: 46rem; line-height: 1.5; }
+  .ledger .lede strong { color: var(--ink-1); }
+
+  /* ── Panel nav: second tier, below the hub bar. Sticks under it so it stays
+     reachable while a long table scrolls. */
+  .ledger-nav {
+    display: flex; gap: .15rem; flex-wrap: wrap;
+    background: var(--surface-1); border-bottom: 1px solid var(--hairline);
+    padding: 0 2rem; position: sticky; top: 2.5rem; z-index: 90;
+  }
+  .ledger-nav a {
+    padding: .6rem .9rem; font-size: .88rem; color: var(--ink-2);
+    border-bottom: 2px solid transparent;
+  }
+  .ledger-nav a:hover { color: var(--ink-1); text-decoration: none; background: var(--plane); }
+  .ledger-nav a.active { color: var(--accent); border-bottom-color: var(--accent); font-weight: 600; }
+
+  .panel {
+    background: var(--surface-1); border: 1px solid var(--hairline); border-radius: 8px;
+    padding: 1.25rem 1.4rem 1.4rem; margin-bottom: 1.5rem;
+  }
+  .panel-head { display: flex; justify-content: space-between; align-items: baseline; gap: 1rem; flex-wrap: wrap; }
+  .panel h2 { margin: 0; font-size: 1.1rem; }
+  .panel .sub { margin: .4rem 0 0; color: var(--ink-2); font-size: .88rem; line-height: 1.5; max-width: 52rem; }
+  .panel .src { margin: .5rem 0 1rem; font-size: .78rem; color: var(--ink-muted); }
+  .panel .caveat { color: #7a5300; }
+
+  /* Status pills pair a glyph with a word — never color alone. */
+  .pill { font-size: .78rem; padding: .2rem .55rem; border-radius: 999px; white-space: nowrap; }
+  .pill-ok   { color: #0a6b0a; background: rgba(12,163,12,.10); }
+  .pill-skip { color: #7a5300; background: rgba(250,178,25,.16); }
+  .pill-err  { color: #a02c2c; background: rgba(208,59,59,.10); }
+  .pill-none { color: var(--ink-muted); background: rgba(11,11,11,.05); }
+
+  .btn {
+    font: inherit; font-size: .85rem; padding: .4rem .8rem; border-radius: 6px;
+    border: 1px solid var(--hairline); background: var(--surface-1); color: var(--ink-1);
+    cursor: pointer; display: inline-block;
+  }
+  .btn:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); text-decoration: none; }
+  .btn:disabled { opacity: .55; cursor: default; }
+  .btn.on { border-color: var(--accent); color: var(--accent); font-weight: 600; }
+
+  .chart-wrap { position: relative; height: 380px; margin-bottom: 1rem; }
+  .chart-wrap.bar { height: 460px; }
+
+  details.table-toggle > summary {
+    cursor: pointer; font-size: .85rem; color: var(--ink-2); padding: .35rem 0; list-style: none;
+  }
+  details.table-toggle > summary::-webkit-details-marker { display: none; }
+  details.table-toggle > summary::before { content: '▸ '; }
+  details.table-toggle[open] > summary::before { content: '▾ '; }
+
+  .tbl-scroll { overflow-x: auto; }
+  table.data { width: 100%; border-collapse: collapse; font-size: .85rem; }
+  table.data th, table.data td {
+    text-align: left; padding: .45rem .6rem; border-bottom: 1px solid var(--grid); vertical-align: top;
+  }
+  table.data th { color: var(--ink-2); font-weight: 600; white-space: nowrap; }
+  /* Numeric columns align on the decimal; tabular figures only where they stack. */
+  table.data td.n, table.data th.n { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+  table.data tbody tr:hover { background: var(--plane); }
+  .muted { color: var(--ink-muted); }
+
+  .badge { font-size: .75rem; padding: .1rem .45rem; border-radius: 4px; white-space: nowrap; }
+  .badge-pass { color: #0a6b0a; background: rgba(12,163,12,.10); }
+  .badge-fail { color: #a02c2c; background: rgba(208,59,59,.10); }
+
+  .src-link { font-size: .78rem; }
+  .empty { color: var(--ink-muted); font-size: .88rem; padding: 1.5rem 0; }
+</style>
+{% block ledger_head %}{% endblock %}
+{% endblock %}
+
+{% block content %}
+<nav class="ledger-nav">
+  {% for item in nav %}
+  <a href="{{ item.url }}" class="{{ 'active' if item.active }}">{{ item.label }}</a>
+  {% endfor %}
+</nav>
+<div class="hub-content ledger">
+  {% block ledger_content %}{% endblock %}
+</div>
+{% endblock %}

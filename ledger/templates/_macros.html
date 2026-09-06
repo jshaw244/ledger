@@ -1,0 +1,34 @@
+{#
+  Shared macros. Jinja macros are not inherited through {% extends %}, so both
+  ledger_index.html and ledger_panel.html import this rather than each defining
+  its own copy that drifts.
+#}
+
+{% macro freshness(run) -%}
+  {% if not run %}
+    <span class="pill pill-none">◦ never fetched</span>
+  {% elif run.status == 'ok' %}
+    <span class="pill pill-ok" title="{{ run.detail }}">● updated {{ (run.finished_at or '')[:10] }}</span>
+  {% elif run.status == 'skipped' %}
+    <span class="pill pill-skip" title="{{ run.detail }}">▲ needs an API key</span>
+  {% elif run.status == 'running' %}
+    <span class="pill pill-none">◦ running…</span>
+  {% else %}
+    <span class="pill pill-err" title="{{ run.detail }}">✕ last fetch failed</span>
+  {% endif %}
+{%- endmacro %}
+
+{% macro cell(row, col) -%}
+  {%- set v = row.get(col.key) -%}
+  {%- if v is none or v == '' -%}
+    <span class="muted">—</span>
+  {%- elif col.fmt == 'money' -%}
+    ${{ '{:,.0f}'.format(v) }}
+  {%- elif col.fmt == 'num' -%}
+    {{ '{:,}'.format(v) }}
+  {%- elif col.fmt == 'badge' -%}
+    <span class="badge badge-{{ 'pass' if v|lower in ['passed','agreed to'] else 'fail' }}">{{ v }}</span>
+  {%- else -%}
+    {{ v }}
+  {%- endif -%}
+{%- endmacro %}

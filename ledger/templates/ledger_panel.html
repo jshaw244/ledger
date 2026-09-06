@@ -1,0 +1,412 @@
+{% extends "ledger_base.html" %}
+{% from "_macros.html" import freshness, cell %}
+{% block title %}{{ p.title }} — Ledger{% endblock %}
+
+{% block ledger_head %}
+<style>
+  .controls {
+    display: flex; gap: .75rem; align-items: flex-end; flex-wrap: wrap;
+    padding-bottom: 1rem; margin-bottom: 1rem; border-bottom: 1px solid var(--grid);
+  }
+  .controls .group { display: flex; gap: .35rem; align-items: center; }
+  .controls label { font-size: .78rem; color: var(--ink-muted); display: block; margin-bottom: .2rem; }
+  .controls input[type=date] {
+    font: inherit; font-size: .85rem; padding: .35rem .5rem;
+    border: 1px solid var(--hairline); border-radius: 6px; background: var(--surface-1); color: var(--ink-1);
+  }
+  .controls .spacer { flex: 1 1 auto; }
+  .range-note { font-size: .8rem; color: var(--ink-muted); }
+</style>
+{% endblock %}
+
+{% block ledger_content %}
+<div class="panel-head" style="margin-bottom:.25rem">
+  <h1 style="font-size:1.35rem;margin:0">{{ p.title }}</h1>
+  {{ freshness(p.run) }}
+</div>
+<p class="sub">{{ p.subtitle }}</p>
+{% if p.missing_tallies %}
+<p class="sub caveat">
+  {{ p.missing_tallies }} of these rows have no vote tally: each one costs a
+  separate API call, and the last fetch ran out of quota before reaching them.
+</p>
+{% endif %}
+<p class="src">Source: {{ p.source }}</p>
+
+{% if p.load_error %}
+  <p class="empty">This panel could not be loaded: {{ p.load_error }}</p>
+{% elif p.empty %}
+  <p class="empty">
+    No data yet.
+    {% if p.run and p.run.status == 'skipped' %}
+      This section needs an API key — {{ p.run.detail }}.
+    {% else %}
+      Run <code>python -m ledger.fetch {{ p.fetch }}</code>, or press “Fetch this section”.
+    {% endif %}
+  </p>
+{% else %}
+
+<div class="controls">
+  {% if p.kind == 'series' %}
+  <div class="group" id="presets">
+    <button class="btn" data-years="1">1Y</button>
+    <button class="btn" data-years="3">3Y</button>
+    <button class="btn" data-years="5">5Y</button>
+    <button class="btn on" data-years="0">All</button>
+  </div>
+  <div>
+    <label for="from">From</label>
+    <input type="date" id="from" min="{{ date_min }}" max="{{ date_max }}" value="{{ date_min }}">
+  </div>
+  <div>
+    <label for="to">To</label>
+    <input type="date" id="to" min="{{ date_min }}" max="{{ date_max }}" value="{{ date_max }}">
+  </div>
+  <span class="range-note" id="range-note"></span>
+  {% endif %}
+
+  <span class="spacer"></span>
+  <a class="btn" id="download" href="{{ url_for('ledger.export', panel_id=p.id) }}">Download CSV</a>
+  <button class="btn" id="fetch-btn">Fetch this section</button>
+  <span class="range-note" id="fetch-note"></span>
+</div>
+
+{% if p.kind in ['series', 'bar'] %}
+<div class="chart-wrap {{ 'bar' if p.kind == 'bar' }}">
+  <canvas id="chart"></canvas>
+</div>
+{% endif %}
+
+{% if p.kind == 'series' %}
+<div class="tbl-scroll">
+  <table class="data">
+    <thead><tr><th>Series</th><th class="n">Latest in range</th><th>Unit</th><th>As of</th><th class="n">Points</th></tr></thead>
+    <tbody id="series-table"></tbody>
+  </table>
+</div>
+{% else %}
+<div class="tbl-scroll">
+  <table class="data">
+    <thead>
+      <tr>
+        {% for c in p.columns %}<th class="{{ 'n' if c.fmt in ['money','num'] }}">{{ c.label }}</th>{% endfor %}
+        <th>Filing</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for row in p.rows %}
+      <tr>
+        {% for c in p.columns %}<td class="{{ 'n' if c.fmt in ['money','num'] }}">{{ cell(row, c) }}</td>{% endfor %}
+        <td class="src-link">
+          {% if row.source_url %}<a href="{{ row.source_url }}" target="_blank" rel="noopener">source ↗</a>
+          {% else %}<span class="muted">—</span>{% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endif %}
+
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
+<script>
+(function () {
+  // Documented slot order — the CVD-safety mechanism. Do not reorder.
+  const SERIES_COLORS = ['#2a78d6','#eb6834','#1baf7a','#eda100','#e87ba4','#008300','#4a3aa7'];
+  const INK_2 = '#52514e', MUTED = '#898781', GRID = '#e1e0d9', AXIS = '#c3c2b7';
+
+  const KIND   = {{ p.kind | tojson }};
+  const EMPTY  = {{ (p.empty or p.load_error is not none) | tojson }};
+  const FETCH  = {{ p.fetch | tojson }};
+  const EXPORT = {{ url_for('ledger.export', panel_id=p.id) | tojson }};
+  {% if p.kind == 'series' %}
+  const SERIES  = {{ p.series | tojson }};
+  const INDEXED = {{ p.indexed | tojson }};
+  const AXIS_LABEL = {{ (p.axis_label or 'indexed — first observation = 100') | tojson }};
+  {% elif p.kind == 'bar' %}
+  const ROWS = {{ p.rows | tojson }};
+  const BAR  = {{ (p.bar or {}) | tojson }};
+  {% endif %}
+
+  const money = v => '$' + Number(v).toLocaleString(undefined, {maximumFractionDigits: 0});
+  const num = v => Number(v).toLocaleString(undefined, {maximumFractionDigits: 2});
+
+  if (window.Chart) {
+    Chart.defaults.font.family = 'system-ui, -apple-system, "Segoe UI", sans-serif';
+    Chart.defaults.color = MUTED;
+  }
+
+  // ---- Time axis ---------------------------------------------------------
+  // Chart.js's linear scale picks "nice" round numbers, but the values here are
+  // epoch milliseconds, where round numbers land on arbitrary dates — which is
+  // why the old ticks looked unevenly spaced. Ticks are placed on calendar
+  // boundaries instead, so the spacing means something.
+  const MS_YEAR = 365.25 * 24 * 3600 * 1000;
+
+  function buildTimeTicks(lo, hi) {
+    const span = (hi - lo) / MS_YEAR;
+    // Long spans step by quarter and label only January and July (year start and
+    // mid-year); shorter spans label every quarter, then every month.
+    const stepMonths  = span > 0.75 ? 3 : 1;
+    const labelEvery  = span > 2.5 ? 6 : stepMonths;
+
+    const d = new Date(lo);
+    let y = d.getUTCFullYear();
+    let m = Math.floor(d.getUTCMonth() / stepMonths) * stepMonths;
+    const ticks = [];
+    for (let guard = 0; guard < 400; guard++) {
+      const t = Date.UTC(y, m, 1);
+      if (t > hi) break;
+      if (t >= lo) ticks.push(t);
+      m += stepMonths;
+      while (m > 11) { m -= 12; y++; }
+    }
+    return { ticks, labelEvery };
+  }
+
+  function tickLabel(ms, labelEvery) {
+    const d = new Date(ms), m = d.getUTCMonth();
+    if (m % labelEvery !== 0) return '';           // gridline only, no label
+    return m === 0 ? String(d.getUTCFullYear())
+                   : d.toLocaleString('en-US', { month: 'short', timeZone: 'UTC' });
+  }
+
+  // ---- Series panel ------------------------------------------------------
+  let chart = null, labelEvery = 6;
+
+  function inRange(d, from, to) {
+    return (!from || d >= from) && (!to || d <= to);
+  }
+
+  function renderSeries(from, to) {
+    let lo = Infinity, hi = -Infinity;
+
+    const datasets = SERIES.map((s, i) => {
+      const pts = s.points.filter(([d]) => inRange(d, from, to));
+      // Index against the first point IN RANGE, so narrowing the window rebases
+      // the comparison rather than leaving it anchored outside the view.
+      const base = pts.length ? pts[0][1] : 0;
+      if (pts.length) {
+        lo = Math.min(lo, Date.parse(pts[0][0]));
+        hi = Math.max(hi, Date.parse(pts[pts.length - 1][0]));
+      }
+      return {
+        label: s.label,
+        unit: s.unit || '',
+        // The raw value rides along on every point so the tooltip always reports
+        // the real level, whatever is plotted.
+        data: pts.map(([d, v]) => ({
+          x: Date.parse(d),
+          y: INDEXED ? (base ? (v / base) * 100 : 100) : v,
+          raw: v,
+        })),
+        borderColor: SERIES_COLORS[i % SERIES_COLORS.length],
+        backgroundColor: SERIES_COLORS[i % SERIES_COLORS.length],
+        borderWidth: 2,
+        pointRadius: 0,
+        pointHoverRadius: 5,
+        pointHoverBorderWidth: 2,
+        pointHoverBorderColor: '#fcfcfb',
+        tension: 0.15,
+      };
+    });
+
+    const built = isFinite(lo) ? buildTimeTicks(lo, hi) : { ticks: [], labelEvery: 6 };
+    labelEvery = built.labelEvery;
+
+    if (chart) {
+      chart.data.datasets = datasets;
+      chart.options.scales.x.min = lo;
+      chart.options.scales.x.max = hi;
+      chart.options.scales.x.afterBuildTicks = ax => { ax.ticks = built.ticks.map(v => ({ value: v })); };
+      chart.update();
+    } else {
+      chart = new Chart(document.getElementById('chart'), {
+        type: 'line',
+        data: { datasets },
+        options: {
+          responsive: true, maintainAspectRatio: false,
+          interaction: { mode: 'index', intersect: false, axis: 'x' },
+          scales: {
+            x: {
+              type: 'linear', min: lo, max: hi,
+              afterBuildTicks: ax => { ax.ticks = built.ticks.map(v => ({ value: v })); },
+              ticks: { callback: v => tickLabel(v, labelEvery), autoSkip: false, color: MUTED },
+              grid: { color: GRID, drawTicks: false },
+              border: { color: AXIS },
+            },
+            y: {
+              title: { display: true, text: AXIS_LABEL, color: MUTED, font: { size: 11 } },
+              ticks: { color: MUTED },
+              grid: { color: GRID, drawTicks: false },
+              border: { color: AXIS },
+            },
+          },
+          plugins: {
+            legend: { position: 'bottom', labels: { boxWidth: 10, boxHeight: 10, usePointStyle: true, color: INK_2 } },
+            tooltip: {
+              callbacks: {
+                title: items => items.length ? new Date(items[0].parsed.x).toISOString().slice(0, 10) : '',
+                // Show the ACTUAL level, never the index — the index is a display
+                // device and would be a misleading number to read off.
+                label: c => ` ${c.dataset.label}: ${num(c.raw.raw)}${c.dataset.unit ? ' ' + c.dataset.unit : ''}`,
+              },
+            },
+          },
+        },
+      });
+    }
+
+    // Table mirrors the selected range, so it and the chart never disagree.
+    const tbody = document.getElementById('series-table');
+    tbody.innerHTML = SERIES.map(s => {
+      const pts = s.points.filter(([d]) => inRange(d, from, to));
+      if (!pts.length) return `<tr><td>${s.label}</td><td class="n muted">—</td><td class="muted">${s.unit || '—'}</td><td class="muted">—</td><td class="n">0</td></tr>`;
+      const last = pts[pts.length - 1];
+      return `<tr><td>${s.label}</td><td class="n">${num(last[1])}</td>`
+           + `<td class="muted">${s.unit || '—'}</td><td class="muted">${last[0]}</td>`
+           + `<td class="n">${pts.length.toLocaleString()}</td></tr>`;
+    }).join('');
+
+    const total = SERIES.reduce((n, s) => n + s.points.filter(([d]) => inRange(d, from, to)).length, 0);
+    document.getElementById('range-note').textContent = `${total.toLocaleString()} observations`;
+
+    // Keep the download in step with what is on screen.
+    const qs = new URLSearchParams();
+    if (from) qs.set('from', from);
+    if (to) qs.set('to', to);
+    document.getElementById('download').href = EXPORT + (qs.toString() ? '?' + qs : '');
+  }
+
+  // ---- Bar panel: ONE measure, so one hue ---------------------------------
+  const topLabels = {
+    id: 'topLabels',
+    afterDatasetsDraw(c) {
+      const { ctx } = c, meta = c.getDatasetMeta(0);
+      ctx.save();
+      ctx.font = '600 11px system-ui, sans-serif';
+      ctx.fillStyle = INK_2;
+      ctx.textBaseline = 'middle';
+      // Selective direct labels: the leaders only, never every mark.
+      meta.data.slice(0, 3).forEach((bar, i) => ctx.fillText(money(c.data.datasets[0].data[i]), bar.x + 6, bar.y));
+      ctx.restore();
+    },
+  };
+
+  function renderBar() {
+    const items = ROWS.filter(r => r[BAR.value_key] != null).slice(0, 15);
+    new Chart(document.getElementById('chart'), {
+      type: 'bar',
+      data: {
+        labels: items.map(r => r[BAR.label_key]),
+        datasets: [{
+          label: 'Total receipts',
+          data: items.map(r => r[BAR.value_key]),
+          backgroundColor: SERIES_COLORS[0],
+          borderRadius: 4, borderSkipped: 'start',
+          categoryPercentage: 0.82, barPercentage: 0.92,
+        }],
+      },
+      options: {
+        indexAxis: 'y', responsive: true, maintainAspectRatio: false,
+        layout: { padding: { right: 96 } },
+        scales: {
+          x: { ticks: { callback: v => '$' + (v / 1e6).toFixed(0) + 'M', color: MUTED }, grid: { color: GRID, drawTicks: false }, border: { color: AXIS } },
+          y: { ticks: { color: INK_2, autoSkip: false, font: { size: 11 } }, grid: { display: false }, border: { color: AXIS } },
+        },
+        plugins: {
+          legend: { display: false },   // one series; the title names it
+          tooltip: { callbacks: {
+            label: c => ' ' + money(c.parsed.x),
+            afterLabel: c => (BAR.meta_keys || []).map(k => items[c.dataIndex][k]).filter(Boolean).join(' · '),
+          } },
+        },
+      },
+      plugins: [topLabels],
+    });
+  }
+
+  // ---- Wiring ------------------------------------------------------------
+  if (!EMPTY) {
+    if (KIND === 'series') {
+      const fromEl = document.getElementById('from');
+      const toEl = document.getElementById('to');
+
+      const setPresetActive = btn =>
+        document.querySelectorAll('#presets .btn').forEach(b => b.classList.toggle('on', b === btn));
+
+      // The selected range lives in the URL, so a view is bookmarkable and can be
+      // linked to someone else — "here is the chart I am looking at" rather than
+      // "open this page and then set these two dates".
+      function apply(push) {
+        renderSeries(fromEl.value, toEl.value);
+        if (push !== false) {
+          const qs = new URLSearchParams();
+          if (fromEl.value && fromEl.value !== fromEl.min) qs.set('from', fromEl.value);
+          if (toEl.value && toEl.value !== toEl.max) qs.set('to', toEl.value);
+          history.replaceState(null, '', location.pathname + (qs.toString() ? '?' + qs : ''));
+        }
+      }
+
+      fromEl.addEventListener('change', () => { setPresetActive(null); apply(); });
+      toEl.addEventListener('change', () => { setPresetActive(null); apply(); });
+
+      document.querySelectorAll('#presets .btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+          const years = Number(btn.dataset.years);
+          if (!years) {
+            fromEl.value = fromEl.min;
+          } else {
+            const end = new Date(toEl.max + 'T00:00:00Z');
+            end.setUTCFullYear(end.getUTCFullYear() - years);
+            const iso = end.toISOString().slice(0, 10);
+            fromEl.value = iso < fromEl.min ? fromEl.min : iso;
+          }
+          toEl.value = toEl.max;
+          setPresetActive(btn);
+          apply();
+        });
+      });
+
+      // Restore a range from the URL on load, clamped to what the data covers.
+      const params = new URLSearchParams(location.search);
+      const qFrom = params.get('from'), qTo = params.get('to');
+      if (qFrom && qFrom >= fromEl.min && qFrom <= fromEl.max) { fromEl.value = qFrom; setPresetActive(null); }
+      if (qTo && qTo >= toEl.min && qTo <= toEl.max) { toEl.value = qTo; setPresetActive(null); }
+
+      apply(false);
+    } else if (KIND === 'bar') {
+      renderBar();
+    }
+  }
+
+  // ---- Refresh just this section -----------------------------------------
+  const btn = document.getElementById('fetch-btn');
+  const note = document.getElementById('fetch-note');
+
+  async function poll() {
+    const s = await (await fetch('../api/fetch/status')).json();
+    if (s.running) { note.textContent = 'Fetching…'; setTimeout(poll, 2000); return; }
+    btn.disabled = false;
+    if (s.error) { note.textContent = 'Failed: ' + s.error; return; }
+    const bad = (s.results || []).filter(x => x.status !== 'ok');
+    note.textContent = bad.length ? 'Done: ' + bad.map(b => b.status + ' ' + b.section).join(', ') : 'Done — reloading…';
+    setTimeout(() => location.reload(), 1200);
+  }
+
+  if (btn) {
+    btn.addEventListener('click', async () => {
+      btn.disabled = true;
+      note.textContent = 'Starting…';
+      const r = await fetch('../api/fetch?sections=' + encodeURIComponent(FETCH), { method: 'POST' });
+      if (!r.ok) { note.textContent = 'Already running.'; btn.disabled = false; return; }
+      poll();
+    });
+  }
+})();
+</script>
+{% endblock %}

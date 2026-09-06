@@ -96,9 +96,13 @@ API key is an expected state, not a failure — a scheduled task shouldn't alarm
 ```
 ledger\                 <- package
   db.py                 <- ledger.db: series_points, records, fetch_runs
-  routes.py             <- blueprint + PANELS (the page, declaratively)
+  routes.py             <- blueprint + PANELS (the pages, declaratively)
   summary.py            <- get_summary() hub card
-  templates\ledger.html
+  templates\
+    ledger_base.html    <- ledger sub-nav + shared styles
+    ledger_index.html   <- /ledger overview cards
+    ledger_panel.html   <- /ledger/<panel> single panel
+    _macros.html        <- freshness pill, table cell formatting
   fetch\
     common.py           <- HTTP w/ retries, API-key handling, to_float
     markets.py prices.py government.py donations.py
@@ -141,6 +145,34 @@ belong together. Three consequences worth knowing before adding one:
 `prune_series()` removes points for series a fetcher no longer lists **and** points
 outside its window — without the second, shortening a window silently does nothing,
 because fetchers upsert and never delete.
+
+## Pages
+
+`/ledger` is an overview of cards; each panel then has **its own page** at
+`/ledger/<id>` — `markets`, `prices`, `rates`, `government`, `donations_top`,
+`donations_contributions` — with a second-tier nav to move between them. Panels
+were stacked on one page until there were six of them; a reader after one number
+should not scroll past five charts to reach it.
+
+Series pages carry a date-range control (1Y / 3Y / 5Y / All, or explicit dates).
+**The selected range lives in the URL**, so a view is linkable:
+`/ledger/rates?from=2026-03-01`. Narrowing the range re-bases the index against
+the first point *in range*, so the comparison follows the window rather than
+staying anchored outside it, and the table under the chart reflects the same
+range so the two can never disagree.
+
+`Download CSV` exports what is on screen, honouring the range
+(`/ledger/<id>/export.csv?from=&to=`). Series export wide — one column per series,
+blanks where a series does not report on that date — which is what opens usefully
+in a spreadsheet. `Fetch this section` refreshes only that panel's fetcher.
+
+### The time axis
+
+Chart.js's linear scale picks round numbers, and the x values are epoch
+milliseconds, where round numbers land on arbitrary dates — which is why ticks
+looked unevenly spaced. Ticks are placed on calendar boundaries instead, and the
+density adapts to the span: over ~2.5 years, quarterly gridlines labelled at
+January and July; under that, quarterly labels; under ~9 months, monthly.
 
 ## Adding a section
 
