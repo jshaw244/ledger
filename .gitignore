@@ -1,0 +1,14 @@
+.venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+
+# The database is derived data — rebuildable by re-running the fetchers.
+data/
+logs/
+
+# Local env / secrets — API keys never get committed
+.env
+*.local.txt

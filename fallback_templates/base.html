@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>{% block title %}Ledger{% endblock %}</title>
+    <style>
+      *, *::before, *::after { box-sizing: border-box; }
+      body { margin: 0; font-family: system-ui, sans-serif; background: #f8f9fa; color: #1a1a2e; }
+      a { color: #0078d7; text-decoration: none; }
+      a:hover { text-decoration: underline; }
+      .hub-nav { background: #12121f; color: #fff; padding: .7rem 1rem; font-weight: 700; font-size: 1rem; }
+      .hub-content { padding: 2rem; }
+    </style>
+    {% block head %}{% endblock %}
+  </head>
+  <body>
+    {# Standalone-only chrome. Under the hub, hub/templates/base.html wins —
+       Flask searches the app's template folder before any blueprint's. #}
+    <nav class="hub-nav">Ledger <span style="font-weight:400;opacity:.6">— standalone</span></nav>
+    {% block content %}{% endblock %}
+    {% block scripts %}{% endblock %}
+  </body>
+</html>
