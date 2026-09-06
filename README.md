@@ -1,6 +1,7 @@
 # Ledger
 
-Public-record tracking — a module of the [personal app hub](../hub).
+Public-record tracking — a module of the
+[personal app hub](https://github.com/jshaw244/hub).
 
 ## The rule this module is built around
 
