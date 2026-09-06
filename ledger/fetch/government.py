@@ -30,8 +30,13 @@ BASE = "https://api.congress.gov/v3/house-vote"
 
 LIST_LIMIT = 250      # wide page, because list order != chronological order
 KEEP_VOTES = 20       # how many recent votes to display
-ENRICH_REAL = 12      # tally lookups with a real key
-ENRICH_DEMO = 3       # ...and with DEMO_KEY, whose hourly budget is tiny
+
+# Tally lookups cost one request each. A real api.data.gov key allows 1000/hour,
+# so enriching every displayed vote costs ~21 requests on a once-daily fetch —
+# nothing. DEMO_KEY's ceiling is 40/hour shared with the donations section, hence
+# the much lower cap there.
+ENRICH_REAL = KEEP_VOTES
+ENRICH_DEMO = 3
 
 
 def _start_epoch(vote: dict) -> float:

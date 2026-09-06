@@ -82,6 +82,7 @@
   .panel h2 { margin: 0; font-size: 1.1rem; }
   .panel .sub { margin: .4rem 0 0; color: var(--ink-2); font-size: .88rem; line-height: 1.5; max-width: 52rem; }
   .panel .src { margin: .5rem 0 1rem; font-size: .78rem; color: var(--ink-muted); }
+  .panel .caveat { color: #7a5300; }
 
   /* Status pills pair a glyph with a word — never color alone. */
   .pill { font-size: .78rem; padding: .2rem .55rem; border-radius: 999px; white-space: nowrap; }
@@ -145,6 +146,14 @@
       {{ freshness(p.run) }}
     </div>
     <p class="sub">{{ p.subtitle }}</p>
+    {% if p.missing_tallies %}
+    {# Shown only when it is actually true — a caveat that is always on screen
+       stops being read, and this one no longer applies with a real API key. #}
+    <p class="sub caveat">
+      {{ p.missing_tallies }} of these rows have no vote tally: each one costs a
+      separate API call, and the last fetch ran out of quota before reaching them.
+    </p>
+    {% endif %}
     <p class="src">Source: {{ p.source }}</p>
 
     {% if p.load_error %}

@@ -53,7 +53,7 @@ PANELS = [
         "fetch": "government",
         "label": "Government",
         "title": "Recent House roll-call votes",
-        "subtitle": "Ordered by when the vote was held. Tallies are fetched per vote and are capped by API quota, so the older rows may show none.",
+        "subtitle": "The most recent House floor votes, newest first. “Roll” is the roll-call number; “source” opens the measure on congress.gov.",
         "source": "api.congress.gov",
         "columns": [
             {"key": "date", "label": "Date"},
@@ -163,6 +163,14 @@ def _build_panels() -> list[dict]:
             else:
                 p["rows"] = get_records(spec["section"], limit=25)
                 p["empty"] = not p["rows"]
+                # Vote tallies need one API call each, so a tight quota can leave
+                # the oldest rows without them. Say so only when it actually
+                # happened, rather than carrying a permanent caveat for a case
+                # that no longer occurs with a real API key.
+                p["missing_tallies"] = sum(
+                    1 for r in p["rows"] if "yea" in (c["key"] for c in spec.get("columns", []))
+                    and r.get("yea") is None
+                )
         except Exception as e:  # noqa: BLE001 — one bad panel must not 500 the page
             log.warning("panel %s failed to load: %s", spec["id"], e)
             p["series"], p["rows"], p["empty"], p["load_error"] = [], [], True, str(e)
