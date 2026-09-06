@@ -33,8 +33,8 @@ PANELS = [
         "fetch": "markets",
         "label": "Markets",
         "title": "Markets & commodities",
-        "subtitle": "Weekly closes over five years, indexed to 100 at the start of the window so series on different scales stay comparable. Hover for the actual level.",
-        "source": "Yahoo Finance (via yfinance)",
+        "subtitle": "Index levels and commodity prices since January 2021, each indexed to 100 at the start so they share one axis. Hover for the actual level.",
+        "source": "FRED, Federal Reserve Bank of St. Louis",
     },
     {
         "id": "prices",

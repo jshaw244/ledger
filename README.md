@@ -31,7 +31,7 @@ rather than showing last month's figure as though it were current.
 
 | Section | Source | Key | Shape |
 |---|---|---|---|
-| Markets | Yahoo Finance via `yfinance` | none | 7 series, weekly closes, 5y |
+| Markets | FRED CSV export | none | 5 series, daily, 2021+ |
 | Prices | FRED CSV export | none | 7 published series |
 | Government | `api.congress.gov` `/v3/house-vote` | `CONGRESS_API_KEY` | recent roll-call votes |
 | Donations | OpenFEC `/v1` | `CONGRESS_API_KEY` | top fundraisers + largest itemized receipts |
@@ -122,6 +122,25 @@ don't reorder or hand-pick. Two rules the code enforces:
 - **Color follows the entity, never its rank.** `series_points.sort_order` records
   each series' position in its fetcher's declared list, so a series keeps the same
   color across fetches instead of being repainted when the row order shifts.
+
+Indexing to 100 is what makes one axis possible, and it constrains which series
+belong together. Three consequences worth knowing before adding one:
+
+- **The window sets the baseline**, so it isn't cosmetic. Markets starts at 2021
+  rather than 2019 because WTI settled at -$37/bbl on 2020-04-20, and indexing a
+  negative value against a positive base puts the line below zero and makes the
+  ratio meaningless.
+- **Rates don't index well.** The 10-year Treasury yield sits in `prices`, not
+  `markets`: from a 0.93% base it indexes to 535, which describes the baseline
+  rather than the market.
+- **Choose the series, don't smooth it.** Natural gas uses FRED's monthly average
+  (`MHHNGSP`) instead of daily spot (`DHHNGSP`), whose February 2021 spike indexes
+  to ~1180 and flattens everything else. Both are published series; we pick one
+  rather than applying our own smoothing.
+
+`prune_series()` removes points for series a fetcher no longer lists **and** points
+outside its window — without the second, shortening a window silently does nothing,
+because fetchers upsert and never delete.
 
 ## Adding a section
 

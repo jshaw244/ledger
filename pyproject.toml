@@ -12,12 +12,6 @@ dependencies = [
     "requests>=2.31",
 ]
 
-[project.optional-dependencies]
-# yfinance is the one non-government source here and the most breakage-prone
-# dependency in the module, so it stays optional: without it the markets section
-# reports an error and every other section still runs.
-markets = ["yfinance>=0.2.40"]
-
 [tool.setuptools]
 packages = ["ledger", "ledger.fetch"]
 include-package-data = true

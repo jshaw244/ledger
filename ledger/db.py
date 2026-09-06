@@ -190,6 +190,37 @@ def upsert_records(section: str, items: list[dict]) -> int:
     return len(rows)
 
 
+def prune_series(section: str, keep_keys: list[str], before_date: str | None = None) -> int:
+    """Drop points a section no longer wants. Returns rows removed.
+
+    Two kinds of leftover, both from the fact that fetchers upsert and never
+    delete:
+
+    - a series removed from a fetcher's dict keeps its rows forever and goes on
+      being charted as though still refreshed;
+    - a series that is still tracked but whose *window* moved keeps its older
+      points, so shortening the window silently does nothing.
+
+    The second is easy to miss: moving the markets window from 2019 to 2021 to
+    escape April 2020's negative oil price had no visible effect until this
+    pruned the out-of-window rows too.
+
+    Call only after a fully successful fetch — pruning on a partial failure would
+    delete series that merely failed to refresh this time.
+    """
+    if not keep_keys:
+        return 0
+    placeholders = ",".join("?" for _ in keep_keys)
+    sql = f"DELETE FROM series_points WHERE section = ? AND (series_key NOT IN ({placeholders})"
+    params: list = [section, *keep_keys]
+    if before_date:
+        sql += " OR point_date < ?"
+        params.append(before_date)
+    sql += ")"
+    with connect() as conn:
+        return conn.execute(sql, params).rowcount
+
+
 def start_run(section: str) -> str:
     started = _now()
     with connect() as conn:

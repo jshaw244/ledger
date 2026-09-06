@@ -23,9 +23,10 @@ def _raw(section: str) -> int:
     """Print one unparsed result from `section`'s upstream endpoint."""
     from .common import api_key, get_json, get_text
 
-    if section == "prices":
-        from .prices import CSV_URL, SERIES
-        sid = next(iter(SERIES))
+    if section in ("prices", "markets"):
+        from .fred import CSV_URL
+        from importlib import import_module
+        sid = next(iter(import_module(f".{section}", __package__).SERIES))
         print(get_text(CSV_URL, params={"id": sid})[:1500])
     elif section == "government":
         from .government import BASE
@@ -44,11 +45,6 @@ def _raw(section: str) -> int:
             print(f"\n===== {path} =====")
             payload = get_json(f"{BASE}/{path}", params={"api_key": key, "per_page": 1, **extra}, timeout=90)
             print(json.dumps((payload.get("results") or [None])[0], indent=2)[:3000])
-    elif section == "markets":
-        import yfinance as yf
-        from .markets import TICKERS
-        sym = next(iter(TICKERS))
-        print(yf.Ticker(sym).history(period="1mo", interval="1wk").tail())
     else:
         print(f"unknown section {section!r}", file=sys.stderr)
         return 1
