@@ -26,6 +26,7 @@ log = logging.getLogger("ledger.fetch")
 SECTIONS = {
     "markets": "ledger.fetch.markets",
     "prices": "ledger.fetch.prices",
+    "rates": "ledger.fetch.rates",
     "government": "ledger.fetch.government",
     "donations": "ledger.fetch.donations",
 }

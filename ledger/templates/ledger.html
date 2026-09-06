@@ -248,7 +248,9 @@
     "{{ p.id }}": {
       kind: "{{ p.kind }}",
       {% if p.kind == 'series' %}
-      series: {{ p.series | tojson }}
+      series: {{ p.series | tojson }},
+      indexed: {{ 'true' if p.indexed else 'false' }},
+      axisLabel: {{ (p.axis_label or 'indexed — first observation = 100') | tojson }}
       {% else %}
       rows: {{ p.rows | tojson }},
       bar: {{ (p.bar or {}) | tojson }}
@@ -265,8 +267,13 @@
     Chart.defaults.color = MUTED;
   }
 
-  // ---- Line panels: mixed scales reconciled by indexing to 100, ONE axis ----
-  function renderSeries(id, series) {
+  // ---- Line panels ----
+  // Series on different scales are reconciled by indexing to 100 so they can
+  // share ONE axis. Series that already share a unit (the rates panel) are drawn
+  // at their actual values instead: indexing a percentage reports how far it moved
+  // from its starting point, which for a rate is a fact about the baseline rather
+  // than about the rate.
+  function renderSeries(id, series, indexed, axisLabel) {
     const el = document.getElementById('chart-' + id);
     if (!el) return;
 
@@ -280,10 +287,12 @@
       }
       return {
         label: s.label,
-        // Keep the raw value on the point so the tooltip can show the real
-        // level; the plotted y is only there to make the series comparable.
+        // Keep the raw value on the point either way, so the tooltip always
+        // reports the real level regardless of what is plotted.
         data: s.points.map(([d, v]) => ({
-          x: Date.parse(d), y: base ? (v / base) * 100 : 100, raw: v
+          x: Date.parse(d),
+          y: indexed ? (base ? (v / base) * 100 : 100) : v,
+          raw: v
         })),
         unit: s.unit || '',
         borderColor: SERIES_COLORS[i % SERIES_COLORS.length],
@@ -316,7 +325,7 @@
             border: { color: AXIS },
           },
           y: {
-            title: { display: true, text: 'indexed — first observation = 100', color: MUTED, font: {size: 11} },
+            title: { display: true, text: axisLabel, color: MUTED, font: {size: 11} },
             ticks: { color: MUTED },
             grid: { color: GRID, drawTicks: false },
             border: { color: AXIS },
@@ -417,7 +426,7 @@
     const d = DATA[id];
     if (!d) return;
     try {
-      if (d.kind === 'series') renderSeries(id, d.series);
+      if (d.kind === 'series') renderSeries(id, d.series, d.indexed, d.axisLabel);
       else if (d.kind === 'bar') renderBar(id, d.rows, d.bar);
     } catch (e) {
       console.error('chart', id, e);
